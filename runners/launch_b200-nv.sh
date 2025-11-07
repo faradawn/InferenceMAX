@@ -1,15 +1,16 @@
 #!/usr/bin/bash
 
-export HF_HUB_CACHE_MOUNT="/raid/hf_hub_cache/"
+# HuggingFace cache location on Lustre
+export HF_HUB_CACHE_MOUNT="/lustre/fsw/coreai_prod_infbench/common/cache/hub/"
 export PORT_OFFSET=0  # Doesn't matter when --exclusive
 
 MODEL_CODE="${EXP_NAME%%_*}"
 FRAMEWORK_SUFFIX=$([[ "$FRAMEWORK" == "trt" ]] && printf '_trt' || printf '')
 
-PARTITION="dgx-b200"
-SQUASH_FILE="/raid/squash/$(echo "$IMAGE" | sed 's/[\/:@#]/_/g').sqsh"
+PARTITION="batch"
+SQUASH_FILE="/lustre/fsw/coreai_prod_infbench/common/squash/$(echo "$IMAGE" | sed 's/[\/:@#]/_/g').sqsh"
 
-salloc --partition=$PARTITION --gres=gpu:$TP --exclusive --time=180 --no-shell
+salloc -A coreai_prod_infbench -N1 --partition=$PARTITION --exclusive --time=180 --no-shell
 JOB_ID=$(squeue -u $USER -h -o %A | head -n1)
 
 set -x
