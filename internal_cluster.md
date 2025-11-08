@@ -7,6 +7,26 @@ git clone https://github.com/faradawn/InferenceMAX.git
 export HF_HOME="/lustre/fsw/coreai_prod_infbench/common/cache/"
 hf download nvidia/DeepSeek-R1-0528-FP4-V2
 hf download deepseek-ai/DeepSeek-R1-0528
+
+mkdir -p  /lustre/fsw/coreai_prod_infbench/common/squash
+
+
+# Running the scripts 
+export HF_TOKEN=""
+source env_dsr1_1k1k_tp4.sh
+bash runners/launch_b200-nv.sh 
+
+
+srun --jobid=$JOB_ID \
+--containe  r-image=$SQUASH_FILE \
+--container-mounts=$GITHUB_WORKSPACE:/workspace/,$HF_HUB_CACHE_MOUNT:$HF_HUB_CACHE \
+--no-container-mount-home --container-writable \
+--container-workdir=/workspace/ \
+--overlap --export=ALL \
+--pty bash
+
+# manual
+bash benchmarks/dsr1_fp4_b200_trt_slurm.sh 
 ```
 
 
@@ -31,3 +51,4 @@ python3 utils/matrix-logic/generate_sweep_configs.py  full-sweep --framework trt
 
 
 ```
+
