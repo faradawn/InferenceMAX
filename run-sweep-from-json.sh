@@ -45,7 +45,12 @@ CONFIG_COUNT=$(jq '. | length' "$JSON_FILE")
 # Loop through each config
 for i in $(seq 0 $((CONFIG_COUNT - 1))); do
     CONFIG_INDEX=$((i + 1))
-
+    
+    # Break if more than 2 configs
+    if [ $CONFIG_INDEX -gt 2 ]; then
+        echo "Stopping after 2 configs"
+        break
+    fi
     
     # Extract config at index i using jq (like matrix.config in GitHub Actions)
     export IMAGE=$(jq -r ".[$i].image" "$JSON_FILE")
