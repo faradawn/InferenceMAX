@@ -9,15 +9,13 @@ export FRAMEWORK_SUFFIX=$([[ "$FRAMEWORK" == "trt" ]] && printf '_trt' || printf
 
 export PARTITION="batch"
 export SQUASH_FILE="/lustre/fsw/coreai_prod_infbench/common/squash/$(echo "$IMAGE" | sed 's/[\/:@#]/_/g').sqsh"
-
-salloc -A coreai_prod_infbench -N1 --partition=$PARTITION --exclusive --time=180 --no-shell
-export JOB_ID=$(squeue -u $USER -h -o %A | head -n1)
+export SRUN_ARGS="-A coreai_prod_infbench -N1 --partition=$PARTITION --exclusive --time=01:00:00"
 
 set -x
 
 # Import Docker image to squash file if it doesn't exist
 if [ ! -f "$SQUASH_FILE" ]; then
-    srun --jobid=$JOB_ID bash -c "enroot import -o $SQUASH_FILE docker://$IMAGE"
+    srun $SRUN_ARGS bash -c "enroot import -o $SQUASH_FILE docker://$IMAGE"
 fi
 
 # Determine which benchmark script to run based on framework
@@ -32,7 +30,7 @@ else
     CONTAINER_WORKDIR="/workspace"
 fi
 
-srun --jobid=$JOB_ID \
+srun $SRUN_ARGS \
 --container-image=$SQUASH_FILE \
 --container-name=infmax \
 --container-mounts=$CONTAINER_MOUNTS \
