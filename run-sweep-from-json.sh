@@ -5,7 +5,7 @@
 # Usage: bash run-sweep-from-json.sh <json_file>
 #
 
-set -e
+set -ex
 
 # ============================================================================
 # Setup
@@ -48,22 +48,8 @@ mkdir -p "${RESULTS_DIR}"
 export HF_HUB_CACHE="/lustre/fsw/coreai_prod_infbench/common/cache/hub/"
 export GITHUB_WORKSPACE="${WORKSPACE_DIR}"
 
-echo "============================================================================"
-echo "Simple Sweep Runner"
-echo "============================================================================"
-echo "JSON config: ${JSON_FILE}"
-echo "Results dir: ${RESULTS_DIR}"
-echo "============================================================================"
-echo ""
-
-# ============================================================================
-# Loop through JSON and run each config
-# ============================================================================
-
 # Count configs using jq (like GitHub Actions fromJson)
 CONFIG_COUNT=$(jq '. | length' "$JSON_FILE")
-echo "Found ${CONFIG_COUNT} configurations"
-echo ""
 
 # Loop through each config
 for i in $(seq 0 $((CONFIG_COUNT - 1))); do
@@ -87,73 +73,29 @@ for i in $(seq 0 $((CONFIG_COUNT - 1))); do
     export RUNNER_TYPE="${RUNNER}"
     export RESULT_FILENAME="${EXP_NAME}_${PRECISION}_${FRAMEWORK}_tp${TP}_ep${EP_SIZE}_dpa_${DP_ATTENTION}_conc${CONC}_${RUNNER}"
     
-    echo "============================================================================"
-    echo "[$CONFIG_INDEX/$CONFIG_COUNT] Running config:"
-    echo "  Framework: ${FRAMEWORK}"
-    echo "  TP: ${TP}, EP: ${EP_SIZE}, DP_ATTN: ${DP_ATTENTION}, CONC: ${CONC}"
-    echo "  Result: ${RESULT_FILENAME}.json"
-    echo "============================================================================"
-    
     # Run the launch script (same as GitHub Actions benchmark-tmpl.yml)
     cd "${WORKSPACE_DIR}"
     bash ./runners/launch_${RUNNER}-nv.sh
     
-    # Check if result was created
-    if [ -f "${RESULT_FILENAME}.json" ]; then
-        echo "✓ Benchmark completed"
-        
-        # Process result (same as GitHub Actions)
-        python3 utils/process_result.py
-        
-        # Move result to results directory
-        mv "agg_${RESULT_FILENAME}.json" "${RESULTS_DIR}/"
-        echo "✓ Result saved: ${RESULTS_DIR}/agg_${RESULT_FILENAME}.json"
-    else
-        echo "✗ ERROR: Result not found: ${RESULT_FILENAME}.json"
-        exit 1
-    fi
+    # Process result (same as GitHub Actions)
+    python3 utils/process_result.py
     
-    echo ""
+    # Move result to results directory
+    mv "agg_${RESULT_FILENAME}.json" "${RESULTS_DIR}/"
 done
 
-echo "============================================================================"
-echo "All benchmarks completed!"
-echo "============================================================================"
-echo ""
-
-# ============================================================================
 # Aggregate and plot results (same as collect-results.yml)
-# ============================================================================
-
-echo "Aggregating results..."
 cd "${WORKSPACE_DIR}"
 
 # Aggregate (same as GitHub Actions)
 python3 utils/collect_results.py "${RESULTS_DIR}/" "${EXP_NAME}"
-if [ -f "agg_${EXP_NAME}.json" ]; then
-    mv "agg_${EXP_NAME}.json" "${RESULTS_DIR}/"
-fi
+mv "agg_${EXP_NAME}.json" "${RESULTS_DIR}/" 2>/dev/null || true
 
 # Generate plots (same as GitHub Actions)
-echo "Generating plots..."
 pip install -q matplotlib 2>/dev/null || true
 python3 utils/plot_perf.py "${RESULTS_DIR}/" "${EXP_NAME}"
 
 # Move plots
-if ls tput_vs_*.png 1> /dev/null 2>&1; then
-    mv tput_vs_*.png "${RESULTS_DIR}/"
-fi
+mv tput_vs_*.png "${RESULTS_DIR}/" 2>/dev/null || true
 
-echo ""
-echo "============================================================================"
-echo "✓ Complete!"
-echo "============================================================================"
 echo "Results: ${RESULTS_DIR}"
-echo ""
-echo "Files:"
-ls -lh "${RESULTS_DIR}"/
-echo ""
-echo "View plots:"
-echo "  ${RESULTS_DIR}/tput_vs_intvty_${EXP_NAME}.png"
-echo "  ${RESULTS_DIR}/tput_vs_e2el_${EXP_NAME}.png"
-echo "============================================================================"

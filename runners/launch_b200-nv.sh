@@ -14,16 +14,22 @@ salloc -A coreai_prod_infbench -N1 --partition=$PARTITION --exclusive --time=180
 export JOB_ID=$(squeue -u $USER -h -o %A | head -n1)
 
 set -x
-srun --jobid=$JOB_ID bash -c "enroot import -o $SQUASH_FILE docker://$IMAGE"
+
+# Import Docker image to squash file if it doesn't exist
+if [ ! -f "$SQUASH_FILE" ]; then
+    srun --jobid=$JOB_ID bash -c "enroot import -o $SQUASH_FILE docker://$IMAGE"
+fi
 
 # Determine which benchmark script to run based on framework
 if [[ "$FRAMEWORK" == "sglang" ]]; then
     BENCHMARK_SCRIPT="benchmarks/${MODEL_CODE}_${PRECISION}_b200_docker.sh"
     export PORT=8888
     CONTAINER_MOUNTS="$GITHUB_WORKSPACE:/sgl-workspace,$HF_HUB_CACHE_MOUNT:$HF_HUB_CACHE"
+    CONTAINER_WORKDIR="/sgl-workspace"
 else
     BENCHMARK_SCRIPT="benchmarks/${MODEL_CODE}_${PRECISION}_b200${FRAMEWORK_SUFFIX}_slurm.sh"
     CONTAINER_MOUNTS="$GITHUB_WORKSPACE:/workspace,$HF_HUB_CACHE_MOUNT:$HF_HUB_CACHE"
+    CONTAINER_WORKDIR="/workspace"
 fi
 
 srun --jobid=$JOB_ID \
