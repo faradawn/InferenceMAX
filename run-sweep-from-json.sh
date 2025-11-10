@@ -32,7 +32,7 @@ fi
 # Setup paths
 export WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-export RESULTS_DIR="/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/parallel_results/run_${TIMESTAMP}"
+export RESULTS_DIR="/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/results_sequential/run_${TIMESTAMP}"
 mkdir -p "${RESULTS_DIR}"
 
 # Environment
@@ -45,12 +45,6 @@ CONFIG_COUNT=$(jq '. | length' "$JSON_FILE")
 # Loop through each config
 for i in $(seq 0 $((CONFIG_COUNT - 1))); do
     CONFIG_INDEX=$((i + 1))
-    
-    # Break if more than 2 configs
-    if [ $CONFIG_INDEX -gt 2 ]; then
-        echo "Stopping after 2 configs"
-        break
-    fi
     
     # Extract config at index i using jq (like matrix.config in GitHub Actions)
     export IMAGE=$(jq -r ".[$i].image" "$JSON_FILE")
@@ -72,9 +66,12 @@ for i in $(seq 0 $((CONFIG_COUNT - 1))); do
     
     # Run the launch script in background
     cd "${WORKSPACE_DIR}"
-    bash ./runners/launch_${RUNNER}-nv.sh &
+    LOG_FILE="${RESULTS_DIR}/${RESULT_FILENAME}.log"
+    bash ./runners/launch_${RUNNER}-nv.sh > "${LOG_FILE}" 2>&1 &
     
     echo "=== Running config ${CONFIG_INDEX}/${CONFIG_COUNT}: Conc=${CONC} TP=${TP} EP=${EP_SIZE} DP-Attn=${DP_ATTENTION} ${FRAMEWORK}/${PRECISION} (PID: $!) ==="
+    echo "    Log: ${LOG_FILE}"
+    sleep 3
 done
 
 # Wait for all background jobs to complete
