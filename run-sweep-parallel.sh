@@ -105,7 +105,7 @@ export GITHUB_WORKSPACE="__WORKSPACE_DIR__"
 
 cd "${GITHUB_WORKSPACE}"
 
-# Run benchmark using srun (already in allocated node)
+# Run benchmark (we're already in allocated node via sbatch)
 export HF_HUB_CACHE_MOUNT="${HF_HUB_CACHE}"
 export MODEL_CODE="${EXP_NAME%%_*}"
 export FRAMEWORK_SUFFIX=$([[ "$FRAMEWORK" == "trt" ]] && printf '_trt' || printf '')

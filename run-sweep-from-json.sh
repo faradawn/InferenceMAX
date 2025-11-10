@@ -1,16 +1,6 @@
-#!/usr/bin/env bash
-#
-# Simple Sweep Runner - Executes configs from JSON file
-#
-# Usage: bash run-sweep-from-json.sh <json_file>
-#
+# Usage: bash run-sweep-from-json.sh envs/dsr1_1k1k_fp4_trtllm.json
 
 set -e
-# Note: We don't use set -x to avoid exposing HF_TOKEN in logs
-
-# ============================================================================
-# Setup
-# ============================================================================
 
 if [ $# -eq 0 ]; then
     echo "Usage: $0 <json_config_file>"
@@ -55,6 +45,7 @@ CONFIG_COUNT=$(jq '. | length' "$JSON_FILE")
 # Loop through each config
 for i in $(seq 0 $((CONFIG_COUNT - 1))); do
     CONFIG_INDEX=$((i + 1))
+
     
     # Extract config at index i using jq (like matrix.config in GitHub Actions)
     export IMAGE=$(jq -r ".[$i].image" "$JSON_FILE")
@@ -74,32 +65,15 @@ for i in $(seq 0 $((CONFIG_COUNT - 1))); do
     export RUNNER_TYPE="${RUNNER}"
     export RESULT_FILENAME="${EXP_NAME}_${PRECISION}_${FRAMEWORK}_tp${TP}_ep${EP_SIZE}_dpa_${DP_ATTENTION}_conc${CONC}_${RUNNER}"
     
-    # Run the launch script (same as GitHub Actions benchmark-tmpl.yml)
+    # Run the launch script in background
     cd "${WORKSPACE_DIR}"
-    bash ./runners/launch_${RUNNER}-nv.sh
+    bash ./runners/launch_${RUNNER}-nv.sh &
     
-    # Save raw benchmark result
-    cp "${RESULT_FILENAME}.json" "${RESULTS_DIR}/" 2>/dev/null || true
-    
-    # Process result (same as GitHub Actions)
-    python3 utils/process_result.py
-    
-    # Move processed result to results directory
-    mv "agg_${RESULT_FILENAME}.json" "${RESULTS_DIR}/"
+    echo "=== Running config ${CONFIG_INDEX}/${CONFIG_COUNT}: Conc=${CONC} TP=${TP} EP=${EP_SIZE} DP-Attn=${DP_ATTENTION} ${FRAMEWORK}/${PRECISION} (PID: $!) ==="
 done
 
-# Aggregate and plot results (same as collect-results.yml)
-cd "${WORKSPACE_DIR}"
+# Wait for all background jobs to complete
+echo "Waiting for all benchmarks to complete..."
+wait
 
-# Aggregate (same as GitHub Actions)
-python3 utils/collect_results.py "${RESULTS_DIR}/" "${EXP_NAME}"
-mv "agg_${EXP_NAME}.json" "${RESULTS_DIR}/" 2>/dev/null || true
-
-# Generate plots (same as GitHub Actions)
-pip install -q matplotlib 2>/dev/null || true
-python3 utils/plot_perf.py "${RESULTS_DIR}/" "${EXP_NAME}"
-
-# Move plots
-mv tput_vs_*.png "${RESULTS_DIR}/" 2>/dev/null || true
-
-echo "Results: ${RESULTS_DIR}"
+echo "All benchmarks completed. Results: ${RESULTS_DIR}"
