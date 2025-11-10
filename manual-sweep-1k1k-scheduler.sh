@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Manual Sweep Scheduler - 1k1k
-# Mimics the GitHub Actions workflow for running benchmarks manually on Slurm
+# Simplified version that mimics GitHub Actions workflow
 #
 # Usage: bash manual-sweep-1k1k-scheduler.sh
 #
@@ -12,10 +12,13 @@ set -e
 # Configuration
 # ============================================================================
 
-export SLURM_ACCOUNT="coreai_prod_infbench"
-export SLURM_PARTITION="batch"
-export HF_HUB_CACHE="/lustre/fsw/coreai_prod_infbench/common/cache/hub/"
-export HF_TOKEN="${HF_TOKEN}"  # Make sure this is set in your environment
+echo "============================================================================"
+echo "Manual Sweep Scheduler - 1k1k"
+echo "============================================================================"
+
+# Workspace - current directory
+export WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$WORKSPACE_DIR"
 
 # Results directory with timestamp
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -23,294 +26,245 @@ export RESULTS_BASE_DIR="/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX
 export RESULTS_DIR="${RESULTS_BASE_DIR}/results_1k1k_${TIMESTAMP}"
 mkdir -p "${RESULTS_DIR}"
 
-# Workspace - current directory
-export WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Environment variables (these are normally set by GitHub Actions)
+export HF_TOKEN="${HF_TOKEN}"
+export HF_HUB_CACHE="/lustre/fsw/coreai_prod_infbench/common/cache/hub/"
+export SLURM_ACCOUNT="coreai_prod_infbench"
+export SLURM_PARTITION="batch"
 
-# Experiment configuration
-export EXP_NAME="dsr1_1k1k"
-export MODEL_PREFIX="dsr1"
-export PRECISION="fp4"
-export ISL=1024
-export OSL=1024
-export MAX_MODEL_LEN=2048
-export RANDOM_RANGE_RATIO=0.8
+# Verify HF_TOKEN is set
+if [ -z "$HF_TOKEN" ]; then
+    echo "ERROR: HF_TOKEN environment variable is not set"
+    echo "Please set it with: export HF_TOKEN='your_token'"
+    exit 1
+fi
 
-# Hardware configuration
-export RUNNER_TYPE="b200"
-export TP=4  # Tensor parallelism (single node, 4 GPUs)
-
-# Concurrency sweep range
-CONC_VALUES=(4 32 128)
-
-# Frameworks to test
-FRAMEWORKS=("sglang" "trt")
-
-echo "============================================================================"
-echo "Manual Sweep Scheduler - 1k1k"
-echo "============================================================================"
-echo "Experiment: ${EXP_NAME}"
-echo "Model: DeepSeek-R1 FP4"
-echo "Hardware: B200 (TP=${TP})"
-echo "Sequence lengths: ISL=${ISL}, OSL=${OSL}"
-echo "Concurrency values: ${CONC_VALUES[@]}"
-echo "Frameworks: ${FRAMEWORKS[@]}"
+echo "Workspace: ${WORKSPACE_DIR}"
 echo "Results directory: ${RESULTS_DIR}"
-echo "============================================================================"
-
-# ============================================================================
-# Step 1: Generate Sweep Configs
-# ============================================================================
-
 echo ""
+
+# ============================================================================
+# Step 1: Generate Sweep Configs (using Python script like GitHub Actions)
+# ============================================================================
+
 echo "Step 1: Generating sweep configurations..."
 echo "============================================================================"
 
-# Define configurations for each framework
-declare -A SGLANG_CONFIGS
-declare -A TRT_CONFIGS
+# Install pydantic if needed
+pip install -q pydantic 2>/dev/null || echo "pydantic already installed"
 
-# SGLang configuration
-SGLANG_MODEL="nvidia/DeepSeek-R1-0528-FP4-V2"
-SGLANG_IMAGE="lmsysorg/sglang:v0.5.3rc1-cu129-b200"
+# Generate configs using the same script as GitHub Actions
+# We'll create a temporary config file with our specific requirements
+TEMP_CONFIG="${RESULTS_DIR}/temp_config.yaml"
 
-# TRT-LLM configuration
-TRT_MODEL="nvidia/DeepSeek-R1-0528-FP4-V2"
-TRT_IMAGE="nvcr.io#nvidia/tensorrt-llm/release:1.1.0rc2.post2"
+cat > "${TEMP_CONFIG}" << 'EOF'
+dsr1-fp4-b200-sglang:
+  image: lmsysorg/sglang:v0.5.3rc1-cu129-b200
+  model: nvidia/DeepSeek-R1-0528-FP4-V2
+  model-prefix: dsr1
+  runner: b200
+  precision: fp4
+  framework: sglang
+  seq-len-configs:
+  - isl: 1024
+    osl: 1024
+    search-space:
+    - { tp: 4, conc-start: 4, conc-end: 4 }
+    - { tp: 4, conc-start: 32, conc-end: 32 }
+    - { tp: 4, conc-start: 128, conc-end: 128 }
 
-# EP and DP_ATTENTION settings based on InferenceMAX configs for TP=4, 1k1k
-# Reference: .github/configs/nvidia-master.yaml lines 36-41
-declare -A EP_SETTINGS
-declare -A DP_ATTN_SETTINGS
+dsr1-fp4-b200-trt:
+  image: nvcr.io#nvidia/tensorrt-llm/release:1.1.0rc2.post2
+  model: nvidia/DeepSeek-R1-0528-FP4-V2
+  model-prefix: dsr1
+  runner: b200
+  precision: fp4
+  framework: trt
+  seq-len-configs:
+  - isl: 1024
+    osl: 1024
+    search-space:
+    - { tp: 4, conc-start: 4, conc-end: 4 }
+    - { tp: 4, conc-start: 32, conc-end: 32 }
+    - { tp: 4, ep: 4, conc-start: 128, conc-end: 128 }
+EOF
 
-# For TP=4, 1k1k:
-# CONC 4-32: EP=1, DP_ATTN=false
-# CONC 64-128: EP=4, DP_ATTN=false
-# CONC 256: EP=4, DP_ATTN=true
-EP_SETTINGS[4]=1
-DP_ATTN_SETTINGS[4]="false"
-EP_SETTINGS[32]=1
-DP_ATTN_SETTINGS[32]="false"
-EP_SETTINGS[128]=4
-DP_ATTN_SETTINGS[128]="false"
+# Generate JSON array of configurations
+CONFIG_JSON=$(python3 utils/matrix-logic/generate_sweep_configs.py \
+    full-sweep \
+    --config-files "${TEMP_CONFIG}" \
+    --seq-lens 1k1k \
+    --model-prefix dsr1)
 
-echo "Configurations generated:"
-echo "  - SGLang: ${#CONC_VALUES[@]} configurations"
-echo "  - TRT-LLM: ${#CONC_VALUES[@]} configurations"
-echo "  Total: $(( ${#CONC_VALUES[@]} * 2 )) benchmarks to run"
+# Save the config JSON for reference
+echo "$CONFIG_JSON" > "${RESULTS_DIR}/sweep_configs.json"
+
+# Count configurations
+CONFIG_COUNT=$(echo "$CONFIG_JSON" | python3 -c "import sys, json; print(len(json.load(sys.stdin)))")
+echo "Generated ${CONFIG_COUNT} benchmark configurations"
 echo ""
 
 # ============================================================================
-# Step 2: Launch Benchmarks
+# Step 2: Launch Benchmarks (loop through configs and call runner scripts)
 # ============================================================================
 
 echo "Step 2: Launching benchmarks..."
 echo "============================================================================"
 
-# Track job status
+# Parse JSON and launch jobs
 declare -a JOB_IDS
-declare -a JOB_NAMES
-JOB_COUNTER=0
+declare -a JOB_CONFIGS
+JOB_INDEX=0
 
-# Function to launch a single benchmark job
-launch_benchmark() {
-    local FRAMEWORK=$1
-    local CONC=$2
-    local MODEL=$3
-    local IMAGE=$4
-    local EP_SIZE=${5:-1}
-    local DP_ATTENTION=${6:-false}
+# Loop through each config in the JSON array
+echo "$CONFIG_JSON" | python3 -c "
+import sys, json
+configs = json.load(sys.stdin)
+for i, config in enumerate(configs):
+    print(f'{i}:::{json.dumps(config)}')
+" | while IFS=':::' read -r INDEX CONFIG; do
     
-    local RESULT_FILENAME="${EXP_NAME}_${PRECISION}_${FRAMEWORK}_tp${TP}_ep${EP_SIZE}_dpa_${DP_ATTENTION}_conc${CONC}_${RUNNER_TYPE}"
-    local JOB_NAME="bmk_${FRAMEWORK}_tp${TP}_conc${CONC}"
+    # Parse the config JSON
+    export IMAGE=$(echo "$CONFIG" | python3 -c "import sys, json; print(json.load(sys.stdin)['image'])")
+    export MODEL=$(echo "$CONFIG" | python3 -c "import sys, json; print(json.load(sys.stdin)['model'])")
+    export FRAMEWORK=$(echo "$CONFIG" | python3 -c "import sys, json; print(json.load(sys.stdin)['framework'])")
+    export PRECISION=$(echo "$CONFIG" | python3 -c "import sys, json; print(json.load(sys.stdin)['precision'])")
+    export RUNNER=$(echo "$CONFIG" | python3 -c "import sys, json; print(json.load(sys.stdin)['runner'])")
+    export ISL=$(echo "$CONFIG" | python3 -c "import sys, json; print(json.load(sys.stdin)['isl'])")
+    export OSL=$(echo "$CONFIG" | python3 -c "import sys, json; print(json.load(sys.stdin)['osl'])")
+    export TP=$(echo "$CONFIG" | python3 -c "import sys, json; print(json.load(sys.stdin)['tp'])")
+    export EP_SIZE=$(echo "$CONFIG" | python3 -c "import sys, json; print(json.load(sys.stdin)['ep'])")
+    export DP_ATTENTION=$(echo "$CONFIG" | python3 -c "import sys, json; print(json.load(sys.stdin)['dp-attn'])")
+    export CONC=$(echo "$CONFIG" | python3 -c "import sys, json; print(json.load(sys.stdin)['conc'])")
+    export MAX_MODEL_LEN=$(echo "$CONFIG" | python3 -c "import sys, json; print(json.load(sys.stdin)['max-model-len'])")
+    export EXP_NAME=$(echo "$CONFIG" | python3 -c "import sys, json; print(json.load(sys.stdin)['exp-name'])")
+    export RANDOM_RANGE_RATIO=0.8
+    
+    # Set additional environment variables
+    export GITHUB_WORKSPACE="${WORKSPACE_DIR}"
+    export RUNNER_TYPE="${RUNNER}"
+    
+    # Result filename (matches GitHub Actions format)
+    export RESULT_FILENAME="${EXP_NAME}_${PRECISION}_${FRAMEWORK}_tp${TP}_ep${EP_SIZE}_dpa_${DP_ATTENTION}_conc${CONC}_${RUNNER}"
+    
+    # Job name
+    JOB_NAME="bmk_${FRAMEWORK}_tp${TP}_ep${EP_SIZE}_conc${CONC}"
     
     echo ""
-    echo "Launching: ${JOB_NAME}"
-    echo "  Framework: ${FRAMEWORK}"
-    echo "  Model: ${MODEL}"
-    echo "  TP: ${TP}, EP: ${EP_SIZE}, DP_ATTN: ${DP_ATTENTION}, CONC: ${CONC}"
+    echo "[$((INDEX + 1))/${CONFIG_COUNT}] Launching: ${JOB_NAME}"
+    echo "  Framework: ${FRAMEWORK}, TP: ${TP}, EP: ${EP_SIZE}, DP_ATTN: ${DP_ATTENTION}, CONC: ${CONC}"
     
-    # Create a temporary launch script for this specific job
-    local LAUNCH_SCRIPT="${RESULTS_DIR}/launch_${JOB_NAME}.sh"
+    # Create a wrapper script that calls the runner script
+    WRAPPER_SCRIPT="${RESULTS_DIR}/run_${JOB_NAME}.sh"
     
-    cat > "${LAUNCH_SCRIPT}" << 'EOF_LAUNCH'
+    cat > "${WRAPPER_SCRIPT}" << 'EOF_WRAPPER'
 #!/usr/bin/bash
 
-# Import environment variables
-export HF_TOKEN="${HF_TOKEN}"
-export HF_HUB_CACHE="${HF_HUB_CACHE}"
-export HF_HUB_CACHE_MOUNT="${HF_HUB_CACHE}"
-export EXP_NAME="${EXP_NAME}"
-export MODEL="${MODEL}"
-export IMAGE="${IMAGE}"
-export FRAMEWORK="${FRAMEWORK}"
-export PRECISION="${PRECISION}"
-export ISL="${ISL}"
-export OSL="${OSL}"
-export MAX_MODEL_LEN="${MAX_MODEL_LEN}"
-export RANDOM_RANGE_RATIO="${RANDOM_RANGE_RATIO}"
-export TP="${TP}"
-export EP_SIZE="${EP_SIZE}"
-export DP_ATTENTION="${DP_ATTENTION}"
-export CONC="${CONC}"
-export RESULT_FILENAME="${RESULT_FILENAME}"
-export GITHUB_WORKSPACE="${WORKSPACE_DIR}"
-export RUNNER_TYPE="${RUNNER_TYPE}"
-export PORT_OFFSET=0
-
-# Derived variables
-export MODEL_CODE="${EXP_NAME%%_*}"
-export FRAMEWORK_SUFFIX=$([[ "$FRAMEWORK" == "trt" ]] && printf '_trt' || printf '')
-export PARTITION="${SLURM_PARTITION}"
-export SQUASH_FILE="/lustre/fsw/coreai_prod_infbench/common/squash/$(echo "$IMAGE" | sed 's/[\/:@#]/_/g').sqsh"
+# Export all environment variables
+export HF_TOKEN="__HF_TOKEN__"
+export HF_HUB_CACHE="__HF_HUB_CACHE__"
+export IMAGE="__IMAGE__"
+export MODEL="__MODEL__"
+export FRAMEWORK="__FRAMEWORK__"
+export PRECISION="__PRECISION__"
+export RUNNER="__RUNNER__"
+export ISL="__ISL__"
+export OSL="__OSL__"
+export TP="__TP__"
+export EP_SIZE="__EP_SIZE__"
+export DP_ATTENTION="__DP_ATTENTION__"
+export CONC="__CONC__"
+export MAX_MODEL_LEN="__MAX_MODEL_LEN__"
+export EXP_NAME="__EXP_NAME__"
+export RANDOM_RANGE_RATIO="__RANDOM_RANGE_RATIO__"
+export RESULT_FILENAME="__RESULT_FILENAME__"
+export GITHUB_WORKSPACE="__GITHUB_WORKSPACE__"
+export RUNNER_TYPE="__RUNNER_TYPE__"
 
 echo "============================================================================"
-echo "Starting benchmark job"
+echo "Benchmark Job: __JOB_NAME__"
 echo "============================================================================"
 echo "SLURM_JOB_ID: $SLURM_JOB_ID"
 echo "SLURMD_NODENAME: $SLURMD_NODENAME"
 echo "Framework: $FRAMEWORK"
-echo "Model: $MODEL"
-echo "TP: $TP, EP: $EP_SIZE, DP_ATTN: $DP_ATTENTION, CONC: $CONC"
-echo "Result file: $RESULT_FILENAME.json"
+echo "Config: TP=$TP, EP=$EP_SIZE, DP_ATTN=$DP_ATTENTION, CONC=$CONC"
 echo "============================================================================"
 
-# Create squash file from Docker image if it doesn't exist
-if [ ! -f "$SQUASH_FILE" ]; then
-    echo "Creating squash file: $SQUASH_FILE"
-    enroot import -o "$SQUASH_FILE" "docker://$IMAGE"
-else
-    echo "Squash file already exists: $SQUASH_FILE"
-fi
+# Change to workspace directory
+cd "$GITHUB_WORKSPACE"
 
-# Determine which benchmark script to run based on framework
-if [[ "$FRAMEWORK" == "sglang" ]]; then
-    BENCHMARK_SCRIPT="benchmarks/${MODEL_CODE}_${PRECISION}_b200_docker.sh"
-    export PORT=8888
-    CONTAINER_MOUNTS="$GITHUB_WORKSPACE:/sgl-workspace,$HF_HUB_CACHE_MOUNT:$HF_HUB_CACHE"
-    export CONTAINER_WORKDIR="/sgl-workspace"
-else
-    BENCHMARK_SCRIPT="benchmarks/${MODEL_CODE}_${PRECISION}_b200${FRAMEWORK_SUFFIX}_slurm.sh"
-    CONTAINER_MOUNTS="$GITHUB_WORKSPACE:/workspace,$HF_HUB_CACHE_MOUNT:$HF_HUB_CACHE"
-    export CONTAINER_WORKDIR="/workspace"
-fi
+# Call the runner script (this is what GitHub Actions does)
+bash ./runners/launch_${RUNNER}-nv.sh
 
-echo "Benchmark script: $BENCHMARK_SCRIPT"
-echo "Container mounts: $CONTAINER_MOUNTS"
-
-# Run the benchmark in the container
-srun \
---container-image="$SQUASH_FILE" \
---container-name=infmax_${SLURM_JOB_ID} \
---container-mounts="$CONTAINER_MOUNTS" \
---no-container-mount-home --container-writable \
---container-workdir="$CONTAINER_WORKDIR" \
---no-container-entrypoint --export=ALL \
-bash "$BENCHMARK_SCRIPT"
-
-# Check if result file was created
-if [ -f "${CONTAINER_WORKDIR}/${RESULT_FILENAME}.json" ]; then
-    echo "Benchmark completed successfully: ${RESULT_FILENAME}.json"
-    
-    # Process result
-    cd "$GITHUB_WORKSPACE"
+# Check if result was created
+if [ -f "${RESULT_FILENAME}.json" ]; then
+    echo ""
+    echo "Processing result..."
     python3 utils/process_result.py
     
-    # Copy processed result to results directory
-    cp "agg_${RESULT_FILENAME}.json" "${RESULTS_DIR}/"
-    echo "Result saved to: ${RESULTS_DIR}/agg_${RESULT_FILENAME}.json"
+    # Copy result to results directory
+    cp "agg_${RESULT_FILENAME}.json" "__RESULTS_DIR__/"
+    echo "Result saved: __RESULTS_DIR__/agg_${RESULT_FILENAME}.json"
 else
-    echo "ERROR: Benchmark result not found: ${RESULT_FILENAME}.json"
+    echo "ERROR: Result file not found: ${RESULT_FILENAME}.json"
     exit 1
 fi
 
 echo "============================================================================"
-echo "Benchmark job completed"
+echo "Benchmark completed successfully"
 echo "============================================================================"
-EOF_LAUNCH
+EOF_WRAPPER
 
-    # Substitute environment variables in the launch script
-    sed -i "s|\${HF_TOKEN}|${HF_TOKEN}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${HF_HUB_CACHE}|${HF_HUB_CACHE}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${EXP_NAME}|${EXP_NAME}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${MODEL}|${MODEL}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${IMAGE}|${IMAGE}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${FRAMEWORK}|${FRAMEWORK}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${PRECISION}|${PRECISION}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${ISL}|${ISL}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${OSL}|${OSL}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${MAX_MODEL_LEN}|${MAX_MODEL_LEN}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${RANDOM_RANGE_RATIO}|${RANDOM_RANGE_RATIO}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${TP}|${TP}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${EP_SIZE}|${EP_SIZE}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${DP_ATTENTION}|${DP_ATTENTION}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${CONC}|${CONC}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${RESULT_FILENAME}|${RESULT_FILENAME}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${WORKSPACE_DIR}|${WORKSPACE_DIR}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${RUNNER_TYPE}|${RUNNER_TYPE}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${SLURM_PARTITION}|${SLURM_PARTITION}|g" "${LAUNCH_SCRIPT}"
-    sed -i "s|\${RESULTS_DIR}|${RESULTS_DIR}|g" "${LAUNCH_SCRIPT}"
+    # Substitute environment variables
+    sed -i "s|__HF_TOKEN__|${HF_TOKEN}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__HF_HUB_CACHE__|${HF_HUB_CACHE}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__IMAGE__|${IMAGE}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__MODEL__|${MODEL}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__FRAMEWORK__|${FRAMEWORK}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__PRECISION__|${PRECISION}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__RUNNER__|${RUNNER}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__ISL__|${ISL}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__OSL__|${OSL}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__TP__|${TP}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__EP_SIZE__|${EP_SIZE}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__DP_ATTENTION__|${DP_ATTENTION}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__CONC__|${CONC}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__MAX_MODEL_LEN__|${MAX_MODEL_LEN}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__EXP_NAME__|${EXP_NAME}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__RANDOM_RANGE_RATIO__|${RANDOM_RANGE_RATIO}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__RESULT_FILENAME__|${RESULT_FILENAME}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__GITHUB_WORKSPACE__|${GITHUB_WORKSPACE}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__RUNNER_TYPE__|${RUNNER_TYPE}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__RESULTS_DIR__|${RESULTS_DIR}|g" "${WRAPPER_SCRIPT}"
+    sed -i "s|__JOB_NAME__|${JOB_NAME}|g" "${WRAPPER_SCRIPT}"
     
-    chmod +x "${LAUNCH_SCRIPT}"
+    chmod +x "${WRAPPER_SCRIPT}"
     
-    # Submit the job to Slurm
+    # Submit job to Slurm
     SBATCH_OUTPUT=$(sbatch \
         --account="${SLURM_ACCOUNT}" \
         --partition="${SLURM_PARTITION}" \
         --nodes=1 \
-        --gres=gpu:${TP} \
         --exclusive \
         --time=03:00:00 \
         --job-name="${JOB_NAME}" \
         --output="${RESULTS_DIR}/${JOB_NAME}_%j.out" \
         --error="${RESULTS_DIR}/${JOB_NAME}_%j.err" \
-        "${LAUNCH_SCRIPT}")
+        "${WRAPPER_SCRIPT}")
     
-    # Extract job ID
-    local JOB_ID=$(echo "$SBATCH_OUTPUT" | grep -oP '\d+')
+    JOB_ID=$(echo "$SBATCH_OUTPUT" | grep -oP '\d+')
+    echo "  Job ID: ${JOB_ID}"
     
-    echo "  Submitted job: ${JOB_ID}"
-    echo "  Log file: ${RESULTS_DIR}/${JOB_NAME}_${JOB_ID}.out"
-    
-    # Track the job
-    JOB_IDS[$JOB_COUNTER]=$JOB_ID
-    JOB_NAMES[$JOB_COUNTER]="${JOB_NAME}"
-    ((JOB_COUNTER++))
+    # Save job info to a file for monitoring
+    echo "${JOB_ID}|${JOB_NAME}|${RESULT_FILENAME}" >> "${RESULTS_DIR}/jobs.txt"
     
     # Small delay between submissions
-    sleep 2
-}
-
-# Launch SGLang benchmarks
-echo ""
-echo "Launching SGLang benchmarks..."
-echo "----------------------------------------------------------------------------"
-for CONC in "${CONC_VALUES[@]}"; do
-    launch_benchmark "sglang" "$CONC" "$SGLANG_MODEL" "$SGLANG_IMAGE" 1 "false"
-done
-
-# Launch TRT-LLM benchmarks
-echo ""
-echo "Launching TRT-LLM benchmarks..."
-echo "----------------------------------------------------------------------------"
-for CONC in "${CONC_VALUES[@]}"; do
-    EP_SIZE=${EP_SETTINGS[$CONC]}
-    DP_ATTN=${DP_ATTN_SETTINGS[$CONC]}
-    launch_benchmark "trt" "$CONC" "$TRT_MODEL" "$TRT_IMAGE" "$EP_SIZE" "$DP_ATTN"
+    sleep 1
 done
 
 echo ""
+echo "All jobs submitted!"
 echo "============================================================================"
-echo "All benchmarks submitted!"
-echo "Total jobs: ${#JOB_IDS[@]}"
-echo "============================================================================"
-
-# Display job summary
-echo ""
-echo "Job Summary:"
-echo "----------------------------------------------------------------------------"
-for i in "${!JOB_IDS[@]}"; do
-    echo "  [${i}] Job ID: ${JOB_IDS[$i]} - ${JOB_NAMES[$i]}"
-done
 
 # ============================================================================
 # Step 3: Monitor Jobs
@@ -319,8 +273,6 @@ done
 echo ""
 echo "Step 3: Monitoring job progress..."
 echo "============================================================================"
-echo "Waiting for all jobs to complete..."
-echo ""
 
 # Function to check if a job is still running
 is_job_running() {
@@ -328,31 +280,37 @@ is_job_running() {
     squeue -j "$JOB_ID" 2>/dev/null | grep -q "$JOB_ID"
 }
 
-# Monitor jobs
+echo "Waiting for all jobs to complete..."
+echo ""
+
+# Monitor jobs from the jobs.txt file
 while true; do
     RUNNING_COUNT=0
     COMPLETED_COUNT=0
     FAILED_COUNT=0
+    TOTAL_JOBS=0
     
-    for i in "${!JOB_IDS[@]}"; do
-        JOB_ID=${JOB_IDS[$i]}
-        JOB_NAME=${JOB_NAMES[$i]}
-        
-        if is_job_running "$JOB_ID"; then
-            ((RUNNING_COUNT++))
-        else
-            # Check if job completed successfully
-            RESULT_FILE=$(ls -t "${RESULTS_DIR}"/agg_*"${JOB_NAME#bmk_}"*.json 2>/dev/null | head -n1)
-            if [ -n "$RESULT_FILE" ]; then
-                ((COMPLETED_COUNT++))
+    if [ -f "${RESULTS_DIR}/jobs.txt" ]; then
+        while IFS='|' read -r JOB_ID JOB_NAME RESULT_FILENAME; do
+            ((TOTAL_JOBS++))
+            
+            if is_job_running "$JOB_ID"; then
+                ((RUNNING_COUNT++))
             else
-                ((FAILED_COUNT++))
+                # Check if result exists
+                if [ -f "${RESULTS_DIR}/agg_${RESULT_FILENAME}.json" ]; then
+                    ((COMPLETED_COUNT++))
+                else
+                    ((FAILED_COUNT++))
+                fi
             fi
-        fi
-    done
+        done < "${RESULTS_DIR}/jobs.txt"
+    fi
     
-    TOTAL_JOBS=${#JOB_IDS[@]}
-    PROCESSED=$((COMPLETED_COUNT + FAILED_COUNT))
+    if [ "$TOTAL_JOBS" -eq 0 ]; then
+        echo "No jobs found. Exiting."
+        exit 1
+    fi
     
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: ${RUNNING_COUNT}, Completed: ${COMPLETED_COUNT}, Failed: ${FAILED_COUNT}, Total: ${TOTAL_JOBS}"
     
@@ -379,7 +337,7 @@ echo "==========================================================================
 cd "$WORKSPACE_DIR"
 
 # Count result files
-RESULT_COUNT=$(ls -1 "${RESULTS_DIR}"/agg_*.json 2>/dev/null | wc -l)
+RESULT_COUNT=$(ls -1 "${RESULTS_DIR}"/agg_dsr1_*.json 2>/dev/null | wc -l)
 echo "Found ${RESULT_COUNT} result files"
 
 if [ "$RESULT_COUNT" -gt 0 ]; then
@@ -391,12 +349,12 @@ if [ "$RESULT_COUNT" -gt 0 ]; then
     # Aggregate results
     echo ""
     echo "Aggregating results..."
-    python3 utils/collect_results.py "${RESULTS_DIR}/" "${EXP_NAME}"
+    python3 utils/collect_results.py "${RESULTS_DIR}/" "dsr1_1k1k"
     
     # Move aggregated file to results directory
-    if [ -f "agg_${EXP_NAME}.json" ]; then
-        mv "agg_${EXP_NAME}.json" "${RESULTS_DIR}/"
-        echo "Aggregated results saved to: ${RESULTS_DIR}/agg_${EXP_NAME}.json"
+    if [ -f "agg_dsr1_1k1k.json" ]; then
+        mv "agg_dsr1_1k1k.json" "${RESULTS_DIR}/"
+        echo "Aggregated results: ${RESULTS_DIR}/agg_dsr1_1k1k.json"
     fi
 else
     echo "WARNING: No result files found!"
@@ -411,9 +369,9 @@ echo ""
 echo "Step 5: Generating performance plots..."
 echo "============================================================================"
 
-pip install -q matplotlib 2>/dev/null || echo "matplotlib already installed"
+pip install -q matplotlib 2>/dev/null || true
 
-python3 utils/plot_perf.py "${RESULTS_DIR}/" "${EXP_NAME}"
+python3 utils/plot_perf.py "${RESULTS_DIR}/" "dsr1_1k1k"
 
 # Move plots to results directory
 if ls tput_vs_*.png 1> /dev/null 2>&1; then
@@ -434,12 +392,12 @@ echo "Results directory: ${RESULTS_DIR}"
 echo ""
 echo "Generated files:"
 echo "  - Individual results: ${RESULT_COUNT} JSON files"
-echo "  - Aggregated results: agg_${EXP_NAME}.json"
+echo "  - Aggregated results: agg_dsr1_1k1k.json"
 echo "  - Summary: summary.txt"
 echo "  - Plots: tput_vs_intvty_*.png, tput_vs_e2el_*.png"
 echo ""
 echo "To view results:"
 echo "  cd ${RESULTS_DIR}"
-echo "  ls -lh"
+echo "  cat summary.txt"
+echo "  cat agg_dsr1_1k1k.json"
 echo "============================================================================"
-
