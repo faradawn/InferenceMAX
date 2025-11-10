@@ -74,7 +74,7 @@ for i in $(seq 0 $((CONFIG_COUNT - 1))); do
     export MODEL=$(jq -r ".[$i].model" "$JSON_FILE")
     export FRAMEWORK=$(jq -r ".[$i].framework" "$JSON_FILE")
     export PRECISION=$(jq -r ".[$i].precision" "$JSON_FILE")
-    export RUNNER=$(jq -r ".[$i].runner" "$JSON_FILE")
+    export RUNNER="b200"
     export ISL=$(jq -r ".[$i].isl" "$JSON_FILE")
     export OSL=$(jq -r ".[$i].osl" "$JSON_FILE")
     export TP=$(jq -r ".[$i].tp" "$JSON_FILE")
