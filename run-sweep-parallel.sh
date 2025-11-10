@@ -78,10 +78,13 @@ for i in $(seq 0 $((CONFIG_COUNT - 1))); do
 #SBATCH --partition=batch
 #SBATCH --nodes=1
 #SBATCH --exclusive
-#SBATCH --time=03:00:00
+#SBATCH --time=01:00:00
 
+# Disable command echoing for sensitive exports
+set +x
 export HF_TOKEN="__HF_TOKEN__"
 export HF_HUB_CACHE="__HF_HUB_CACHE__"
+set -x
 export IMAGE="__IMAGE__"
 export MODEL="__MODEL__"
 export FRAMEWORK="__FRAMEWORK__"
@@ -223,6 +226,7 @@ echo "All jobs completed!"
 echo ""
 
 # Aggregate results
+echo "Doing results aggregation"
 cd "${WORKSPACE_DIR}"
 python3 utils/collect_results.py "${RESULTS_DIR}/" "${EXP_NAME}"
 mv "agg_${EXP_NAME}.json" "${RESULTS_DIR}/" 2>/dev/null || true

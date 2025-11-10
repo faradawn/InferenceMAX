@@ -5,7 +5,8 @@
 # Usage: bash run-sweep-from-json.sh <json_file>
 #
 
-set -ex
+set -e
+# Note: We don't use set -x to avoid exposing HF_TOKEN in logs
 
 # ============================================================================
 # Setup
