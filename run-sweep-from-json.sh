@@ -41,7 +41,7 @@ fi
 # Setup paths
 export WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-export RESULTS_DIR="/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/results_${TIMESTAMP}"
+export RESULTS_DIR="/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/parallel_results/run_${TIMESTAMP}"
 mkdir -p "${RESULTS_DIR}"
 
 # Environment
@@ -77,10 +77,13 @@ for i in $(seq 0 $((CONFIG_COUNT - 1))); do
     cd "${WORKSPACE_DIR}"
     bash ./runners/launch_${RUNNER}-nv.sh
     
+    # Save raw benchmark result
+    cp "${RESULT_FILENAME}.json" "${RESULTS_DIR}/" 2>/dev/null || true
+    
     # Process result (same as GitHub Actions)
     python3 utils/process_result.py
     
-    # Move result to results directory
+    # Move processed result to results directory
     mv "agg_${RESULT_FILENAME}.json" "${RESULTS_DIR}/"
 done
 
