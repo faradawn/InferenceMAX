@@ -1,3 +1,7 @@
 **/__pycache__/**
 **/.coverage
 .venv
+bench_serving/
+parallel_results/
+results_1k1k_*/
+results_*/
