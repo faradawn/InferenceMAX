@@ -11,22 +11,7 @@ hf download deepseek-ai/DeepSeek-R1-0528
 mkdir -p  /lustre/fsw/coreai_prod_infbench/common/squash
 
 
-# Running the scripts 
-export HF_TOKEN=""
-source env_dsr1_1k1k_tp4.sh
-bash runners/launch_b200-nv.sh 
 
-
-srun --jobid=$JOB_ID \
---container-image=$SQUASH_FILE \
---container-mounts=$GITHUB_WORKSPACE:/workspace/,$HF_HUB_CACHE_MOUNT:$HF_HUB_CACHE \
---no-container-mount-home --container-writable \
---container-workdir=/workspace/ \
---overlap --export=ALL \
---pty bash
-
-# manual
-bash benchmarks/dsr1_fp4_b200_trt_slurm.sh 
 
 # result
 ============ Serving Benchmark Result ============
@@ -81,5 +66,27 @@ python3 utils/matrix-logic/generate_sweep_configs.py runner-sweep --runner-type 
 python3 utils/matrix-logic/generate_sweep_configs.py  full-sweep --framework trt --runner-type b200 --model-prefix deepseek --config-files .github/configs/nvidia-master.yaml --runner-config .github/configs/runners.yaml
 
 
+# Create an env file
+
+# Git Push and run on nyx
+# Running the scripts 
+export HF_TOKEN=""
+source env_dsr1_1k1k_tp4.sh
+bash runners/launch_b200-nv.sh 
+
+
+# Manually attach to container
+export JOB_ID=$(squeue -u $USER -h -o %A | head -n1)
+export IMAGE="lmsysorg/sglang:v0.5.3rc1-cu129-b200"
+export SQUASH_FILE="/lustre/fsw/coreai_prod_infbench/common/squash/$(echo "$IMAGE" | sed 's/[\/:@#]/_/g').sqsh"
+
+
+srun --jobid=$JOB_ID \
+--container-image=$SQUASH_FILE \
+--overlap --export=ALL \
+--pty bash
+
+# manual
+bash benchmarks/dsr1_fp4_b200_trt_slurm.sh 
 ```
 

@@ -15,11 +15,22 @@ export JOB_ID=$(squeue -u $USER -h -o %A | head -n1)
 
 set -x
 srun --jobid=$JOB_ID bash -c "enroot import -o $SQUASH_FILE docker://$IMAGE"
+
+# Determine which benchmark script to run based on framework
+if [[ "$FRAMEWORK" == "sglang" ]]; then
+    BENCHMARK_SCRIPT="benchmarks/${MODEL_CODE}_${PRECISION}_b200_docker.sh"
+    export PORT=8888
+    CONTAINER_MOUNTS="$GITHUB_WORKSPACE:/sgl-workspace,$HF_HUB_CACHE_MOUNT:$HF_HUB_CACHE"
+else
+    BENCHMARK_SCRIPT="benchmarks/${MODEL_CODE}_${PRECISION}_b200${FRAMEWORK_SUFFIX}_slurm.sh"
+    CONTAINER_MOUNTS="$GITHUB_WORKSPACE:/workspace,$HF_HUB_CACHE_MOUNT:$HF_HUB_CACHE"
+fi
+
 srun --jobid=$JOB_ID \
 --container-image=$SQUASH_FILE \
---container-mounts=$GITHUB_WORKSPACE:/workspace/,$HF_HUB_CACHE_MOUNT:$HF_HUB_CACHE \
+--container-name=infmax \
+--container-mounts=$CONTAINER_MOUNTS \
 --no-container-mount-home --container-writable \
---container-workdir=/workspace/ \
+--container-workdir=$CONTAINER_WORKDIR \
 --no-container-entrypoint --export=ALL \
-bash benchmarks/${MODEL_CODE}_${PRECISION}_b200${FRAMEWORK_SUFFIX}_slurm.sh
-
+bash $BENCHMARK_SCRIPT
