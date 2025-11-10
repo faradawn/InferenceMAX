@@ -24,6 +24,13 @@ if [ ! -f "$JSON_FILE" ]; then
     exit 1
 fi
 
+# Check for jq
+if ! command -v jq &> /dev/null; then
+    echo "ERROR: jq is not installed"
+    echo "Please install it: module load jq  or  yum install jq"
+    exit 1
+fi
+
 # Required environment variables
 if [ -z "$HF_TOKEN" ]; then
     echo "ERROR: HF_TOKEN not set"
@@ -53,37 +60,29 @@ echo ""
 # Loop through JSON and run each config
 # ============================================================================
 
-# Count configs
-CONFIG_COUNT=$(python3 -c "import json; print(len(json.load(open('$JSON_FILE'))))")
+# Count configs using jq (like GitHub Actions fromJson)
+CONFIG_COUNT=$(jq '. | length' "$JSON_FILE")
 echo "Found ${CONFIG_COUNT} configurations"
 echo ""
 
-CONFIG_INDEX=0
-
-# Read JSON and process each config
-python3 -c "
-import json
-configs = json.load(open('$JSON_FILE'))
-for config in configs:
-    print(json.dumps(config))
-" | while read -r CONFIG_JSON; do
+# Loop through each config
+for i in $(seq 0 $((CONFIG_COUNT - 1))); do
+    CONFIG_INDEX=$((i + 1))
     
-    ((CONFIG_INDEX++))
-    
-    # Parse config
-    export IMAGE=$(echo "$CONFIG_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin)['image'])")
-    export MODEL=$(echo "$CONFIG_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin)['model'])")
-    export FRAMEWORK=$(echo "$CONFIG_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin)['framework'])")
-    export PRECISION=$(echo "$CONFIG_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin)['precision'])")
-    export RUNNER=$(echo "$CONFIG_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin)['runner'])")
-    export ISL=$(echo "$CONFIG_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin)['isl'])")
-    export OSL=$(echo "$CONFIG_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin)['osl'])")
-    export TP=$(echo "$CONFIG_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin)['tp'])")
-    export EP_SIZE=$(echo "$CONFIG_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin)['ep'])")
-    export DP_ATTENTION=$(echo "$CONFIG_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin)['dp-attn'])")
-    export CONC=$(echo "$CONFIG_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin)['conc'])")
-    export MAX_MODEL_LEN=$(echo "$CONFIG_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin)['max-model-len'])")
-    export EXP_NAME=$(echo "$CONFIG_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin)['exp-name'])")
+    # Extract config at index i using jq (like matrix.config in GitHub Actions)
+    export IMAGE=$(jq -r ".[$i].image" "$JSON_FILE")
+    export MODEL=$(jq -r ".[$i].model" "$JSON_FILE")
+    export FRAMEWORK=$(jq -r ".[$i].framework" "$JSON_FILE")
+    export PRECISION=$(jq -r ".[$i].precision" "$JSON_FILE")
+    export RUNNER=$(jq -r ".[$i].runner" "$JSON_FILE")
+    export ISL=$(jq -r ".[$i].isl" "$JSON_FILE")
+    export OSL=$(jq -r ".[$i].osl" "$JSON_FILE")
+    export TP=$(jq -r ".[$i].tp" "$JSON_FILE")
+    export EP_SIZE=$(jq -r ".[$i].ep" "$JSON_FILE")
+    export DP_ATTENTION=$(jq -r ".[$i][\"dp-attn\"]" "$JSON_FILE")
+    export CONC=$(jq -r ".[$i].conc" "$JSON_FILE")
+    export MAX_MODEL_LEN=$(jq -r ".[$i][\"max-model-len\"]" "$JSON_FILE")
+    export EXP_NAME=$(jq -r ".[$i][\"exp-name\"]" "$JSON_FILE")
     export RANDOM_RANGE_RATIO=0.8
     export RUNNER_TYPE="${RUNNER}"
     export RESULT_FILENAME="${EXP_NAME}_${PRECISION}_${FRAMEWORK}_tp${TP}_ep${EP_SIZE}_dpa_${DP_ATTENTION}_conc${CONC}_${RUNNER}"
@@ -95,7 +94,7 @@ for config in configs:
     echo "  Result: ${RESULT_FILENAME}.json"
     echo "============================================================================"
     
-    # Run the launch script
+    # Run the launch script (same as GitHub Actions benchmark-tmpl.yml)
     cd "${WORKSPACE_DIR}"
     bash ./runners/launch_${RUNNER}-nv.sh
     
@@ -103,7 +102,7 @@ for config in configs:
     if [ -f "${RESULT_FILENAME}.json" ]; then
         echo "✓ Benchmark completed"
         
-        # Process result
+        # Process result (same as GitHub Actions)
         python3 utils/process_result.py
         
         # Move result to results directory
@@ -123,19 +122,19 @@ echo "==========================================================================
 echo ""
 
 # ============================================================================
-# Aggregate and plot results
+# Aggregate and plot results (same as collect-results.yml)
 # ============================================================================
 
 echo "Aggregating results..."
 cd "${WORKSPACE_DIR}"
 
-# Aggregate
+# Aggregate (same as GitHub Actions)
 python3 utils/collect_results.py "${RESULTS_DIR}/" "${EXP_NAME}"
 if [ -f "agg_${EXP_NAME}.json" ]; then
     mv "agg_${EXP_NAME}.json" "${RESULTS_DIR}/"
 fi
 
-# Generate plots
+# Generate plots (same as GitHub Actions)
 echo "Generating plots..."
 pip install -q matplotlib 2>/dev/null || true
 python3 utils/plot_perf.py "${RESULTS_DIR}/" "${EXP_NAME}"
@@ -158,4 +157,3 @@ echo "View plots:"
 echo "  ${RESULTS_DIR}/tput_vs_intvty_${EXP_NAME}.png"
 echo "  ${RESULTS_DIR}/tput_vs_e2el_${EXP_NAME}.png"
 echo "============================================================================"
-
