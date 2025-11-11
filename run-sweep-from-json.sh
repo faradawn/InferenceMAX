@@ -69,8 +69,7 @@ for i in $(seq 0 $((CONFIG_COUNT - 1))); do
     LOG_FILE="${RESULTS_DIR}/${RESULT_FILENAME}.log"
     bash ./runners/launch_${RUNNER}-nv.sh > "${LOG_FILE}" 2>&1 &
     
-    echo "=== Running config ${CONFIG_INDEX}/${CONFIG_COUNT}: Conc=${CONC} TP=${TP} EP=${EP_SIZE} DP-Attn=${DP_ATTENTION} ${FRAMEWORK}/${PRECISION} (PID: $!) ==="
-    echo "    Log: ${LOG_FILE}"
+    echo "=== Launched ${LOG_FILE}"
     sleep 3
 done
 

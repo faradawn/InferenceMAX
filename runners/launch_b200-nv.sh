@@ -20,7 +20,6 @@ fi
 
 # Determine which benchmark script to run based on framework
 if [[ "$FRAMEWORK" == "sglang" ]]; then
-    export PORT=8888
     BENCHMARK_SCRIPT="benchmarks/${MODEL_CODE}_${PRECISION}_b200_docker.sh"
 else
     BENCHMARK_SCRIPT="benchmarks/${MODEL_CODE}_${PRECISION}_b200${FRAMEWORK_SUFFIX}_slurm.sh"

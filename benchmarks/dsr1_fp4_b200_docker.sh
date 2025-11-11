@@ -7,6 +7,7 @@ echo "Inside benchmarking dsr1_fp4_b200_docker.sh"
 sed -i '102,108d' /usr/local/lib/python3.12/dist-packages/flashinfer/jit/cubin_loader.py
 
 export PORT=8888
+SERVER_LOG=$(mktemp /tmp/server-XXXXXX.log)
 
 # Default: recv every ~10 requests; if CONC ≥ 16, relax to ~30 requests between scheduler recv polls.
 if [[ $CONC -ge 16 ]]; then
@@ -22,7 +23,8 @@ PYTHONNOUSERSITE=1 python3 -m sglang.launch_server --model-path $MODEL --host 0.
 --cuda-graph-max-bs 256 --max-running-requests 256 --mem-fraction-static 0.85 --kv-cache-dtype fp8_e4m3 \
 --chunked-prefill-size 16384 \
 --enable-ep-moe --quantization modelopt_fp4 --enable-flashinfer-allreduce-fusion --scheduler-recv-interval $SCHEDULER_RECV_INTERVAL \
---enable-symm-mem --disable-radix-cache --attention-backend trtllm_mla --enable-flashinfer-trtllm-moe --stream-interval 10
+--enable-symm-mem --disable-radix-cache --attention-backend trtllm_mla --enable-flashinfer-trtllm-moe --stream-interval 10 \
+> $SERVER_LOG 2>&1 &
 
 # Prepare for benchmark
 set +x
