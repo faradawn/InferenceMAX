@@ -20,21 +20,17 @@ fi
 
 # Determine which benchmark script to run based on framework
 if [[ "$FRAMEWORK" == "sglang" ]]; then
-    BENCHMARK_SCRIPT="benchmarks/${MODEL_CODE}_${PRECISION}_b200_docker.sh"
     export PORT=8888
-    CONTAINER_MOUNTS="$GITHUB_WORKSPACE:/sgl-workspace,$HF_HUB_CACHE_MOUNT:$HF_HUB_CACHE"
-    CONTAINER_WORKDIR="/sgl-workspace"
+    BENCHMARK_SCRIPT="benchmarks/${MODEL_CODE}_${PRECISION}_b200_docker.sh"
 else
     BENCHMARK_SCRIPT="benchmarks/${MODEL_CODE}_${PRECISION}_b200${FRAMEWORK_SUFFIX}_slurm.sh"
-    CONTAINER_MOUNTS="$GITHUB_WORKSPACE:/workspace,$HF_HUB_CACHE_MOUNT:$HF_HUB_CACHE"
-    CONTAINER_WORKDIR="/workspace"
 fi
 
 srun $SRUN_ARGS \
 --container-image=$SQUASH_FILE \
 --container-name=infmax \
---container-mounts=$CONTAINER_MOUNTS \
+--container-mounts=$GITHUB_WORKSPACE:/workspace/,$HF_HUB_CACHE_MOUNT:$HF_HUB_CACHE \
 --no-container-mount-home --container-writable \
---container-workdir=$CONTAINER_WORKDIR \
+--container-workdir=/workspace/ \
 --no-container-entrypoint --export=ALL \
 bash $BENCHMARK_SCRIPT

@@ -82,7 +82,7 @@ export SQUASH_FILE="/lustre/fsw/coreai_prod_infbench/common/squash/$(echo "$IMAG
 
 
 srun --jobid=$JOB_ID \
---container-image=$SQUASH_FILE \
+--container-name=infmax \
 --overlap --export=ALL \
 --pty bash
 
