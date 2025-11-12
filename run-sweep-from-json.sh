@@ -77,6 +77,7 @@ for i in $(seq 0 $((CONFIG_COUNT - 1))); do
     
     echo "=== Launched job ${CONFIG_INDEX}/${CONFIG_COUNT}: ${LOG_FILE}"
     sleep 3
+    break
 done
 
 # Wait for all background jobs to complete

@@ -9,7 +9,7 @@ export FRAMEWORK_SUFFIX=$([[ "$FRAMEWORK" == "trt" ]] && printf '_trt' || printf
 
 export PARTITION="batch"
 export SQUASH_FILE="/lustre/fsw/coreai_prod_infbench/common/squash/$(echo "$IMAGE" | sed 's/[\/:@#]/_/g').sqsh"
-export SRUN_ARGS="-A coreai_prod_infbench -N1 --partition=$PARTITION --exclusive --time=01:00:00"
+export SRUN_ARGS="-A coreai_prod_infbench -N1 --partition=$PARTITION --exclusive --time=00:30:00"
 
 set -x
 
