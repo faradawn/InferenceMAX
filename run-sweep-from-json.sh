@@ -64,6 +64,12 @@ for i in $(seq 0 $((CONFIG_COUNT - 1))); do
     export RUNNER_TYPE="${RUNNER}"
     export RESULT_FILENAME="${EXP_NAME}_${PRECISION}_${FRAMEWORK}_tp${TP}_ep${EP_SIZE}_dpa_${DP_ATTENTION}_conc${CONC}_${RUNNER}"
     
+    # Check if result file already exists in current directory
+    if [ -f "${WORKSPACE_DIR}/${RESULT_FILENAME}.json" ]; then
+        echo "=== Skipping job ${CONFIG_INDEX}/${CONFIG_COUNT}: Result file already exists: ${RESULT_FILENAME}.json"
+        continue
+    fi
+    
     # Run the launch script in background
     cd "${WORKSPACE_DIR}"
     LOG_FILE="${RESULTS_DIR}/${RESULT_FILENAME}.log"

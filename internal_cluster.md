@@ -51,7 +51,7 @@ cd /lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/
 source .venv/bin/activate
 
 # TRTLLM
-python3 utils/matrix-logic/generate_sweep_configs.py test-config --key dsr1-fp4-b200-trt --seq-len 1k1k --config-files .github/configs/nvidia-master.yaml --runner-config .github/configs/runners.yaml
+python3 utils/matrix-logic/generate_sweep_configs.py test-config --key dsr1-fp8-b200-trt --config-files .github/configs/nvidia-master.yaml --runner-config .github/configs/runners.yaml > envs/dsr1-fp8-b200-trt.json
 
 
 # SGlang
