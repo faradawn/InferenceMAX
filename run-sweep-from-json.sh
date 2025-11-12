@@ -51,7 +51,7 @@ for i in $(seq 0 $((CONFIG_COUNT - 1))); do
     export MODEL=$(jq -r ".[$i].model" "$JSON_FILE")
     export FRAMEWORK=$(jq -r ".[$i].framework" "$JSON_FILE")
     export PRECISION=$(jq -r ".[$i].precision" "$JSON_FILE")
-    export RUNNER="b200"
+    export RUNNER=$(jq -r ".[$i].runner" "$JSON_FILE")
     export ISL=$(jq -r ".[$i].isl" "$JSON_FILE")
     export OSL=$(jq -r ".[$i].osl" "$JSON_FILE")
     export TP=$(jq -r ".[$i].tp" "$JSON_FILE")
@@ -73,7 +73,7 @@ for i in $(seq 0 $((CONFIG_COUNT - 1))); do
     # Run the launch script in background
     cd "${WORKSPACE_DIR}"
     LOG_FILE="${RESULTS_DIR}/${RESULT_FILENAME}.log"
-    bash ./runners/launch_${RUNNER}-nv.sh > "${LOG_FILE}" 2>&1 &
+    bash ./runners/launch_b200-nv.sh > "${LOG_FILE}" 2>&1 &
     
     echo "=== Launched job ${CONFIG_INDEX}/${CONFIG_COUNT}: ${LOG_FILE}"
     sleep 3
