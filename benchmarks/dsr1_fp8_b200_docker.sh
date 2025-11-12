@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
 
-# ========= Required Env Vars =========
-# HF_TOKEN
-# HF_HUB_CACHE
-# MODEL
-# PORT
-# TP
-# CONC
-# MAX_MODEL_LEN
-
-nvidia-smi
+echo ""
+echo "=== Inside benchmarking dsr1_fp8_b200_docker.sh"
+echo ""
 
 # To improve CI stability, we patch this helper function to prevent a race condition that
 # happens 1% of the time. ref: https://github.com/flashinfer-ai/flashinfer/pull/1779
 sed -i '102,108d' /usr/local/lib/python3.12/dist-packages/flashinfer/jit/cubin_loader.py
+
+export PORT=8888
+SERVER_LOG=$(mktemp /tmp/server-XXXXXX.log)
 
 export SGL_ENABLE_JIT_DEEPGEMM=false
 export SGLANG_ENABLE_FLASHINFER_GEMM=true
@@ -26,12 +22,33 @@ else
 fi
 echo "SCHEDULER_RECV_INTERVAL: $SCHEDULER_RECV_INTERVAL, CONC: $CONC, ISL: $ISL, OSL: $OSL"
 
-ps aux
-
 set -x
-PYTHONNOUSERSITE=1 python3 -m sglang.launch_server --model-path=$MODEL --host=0.0.0.0 --port=$PORT \
+PYTHONNOUSERSITE=1 python3 -m sglang.launch_server --model-path $MODEL --host 0.0.0.0 --port $PORT --trust-remote-code \
 --tensor-parallel-size=$TP --data-parallel-size=1 \
 --cuda-graph-max-bs 128 --max-running-requests 128 \
 --mem-fraction-static 0.82 --kv-cache-dtype fp8_e4m3 --chunked-prefill-size 32768 --max-prefill-tokens 32768 \
 --enable-flashinfer-allreduce-fusion --scheduler-recv-interval $SCHEDULER_RECV_INTERVAL --disable-radix-cache \
---attention-backend trtllm_mla --stream-interval 30 --enable-flashinfer-trtllm-moe --quantization fp8
+--attention-backend trtllm_mla --stream-interval 30 --enable-flashinfer-trtllm-moe --quantization fp8 \
+> $SERVER_LOG 2>&1 &
+
+# Prepare for benchmark
+set +x
+while IFS= read -r line; do
+    printf '%s\n' "$line"
+    if [[ "$line" == *"The server is fired up and ready to roll!"* ]]; then
+        break
+    fi
+done < <(tail -F -n0 "$SERVER_LOG")
+
+git clone https://github.com/kimbochen/bench_serving.git
+set -x
+python3 bench_serving/benchmark_serving.py \
+--model $MODEL --backend openai \
+--base-url http://0.0.0.0:$PORT \
+--dataset-name random \
+--random-input-len $ISL --random-output-len $OSL --random-range-ratio $RANDOM_RANGE_RATIO \
+--num-prompts $(( $CONC * 10 )) --max-concurrency $CONC \
+--request-rate inf --ignore-eos \
+--save-result --percentile-metrics 'ttft,tpot,itl,e2el' \
+--result-dir /workspace/ \
+--result-filename $RESULT_FILENAME.json
