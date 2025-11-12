@@ -88,5 +88,22 @@ srun --jobid=$JOB_ID \
 
 # manual
 bash benchmarks/dsr1_fp4_b200_trt_slurm.sh 
+
+# collect results 
+python3 utils/collect_results.py . dsr1_1k1k
+
+python3 utils/plot_perf.py . dsr1_1k1k
+
+
+# Process results
+bash process-results-from-json.sh envs/dsr1-fp4-b200-sglang.json
+
+# Move results and plot
+mkdir -p processed_results
+mv agg_*.json processed_results/
+python3 utils/plot_perf.py processed_results/ dsr1_1k1k
+
+rsync -azP nyx:/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/dsr1_1k1k_fp4_sglang* .
+
 ```
 

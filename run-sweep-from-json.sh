@@ -69,7 +69,7 @@ for i in $(seq 0 $((CONFIG_COUNT - 1))); do
     LOG_FILE="${RESULTS_DIR}/${RESULT_FILENAME}.log"
     bash ./runners/launch_${RUNNER}-nv.sh > "${LOG_FILE}" 2>&1 &
     
-    echo "=== Launched ${LOG_FILE}"
+    echo "=== Launched job ${CONFIG_INDEX}/${CONFIG_COUNT}: ${LOG_FILE}"
     sleep 3
 done
 
