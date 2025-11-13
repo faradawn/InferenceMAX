@@ -105,7 +105,15 @@ python3 utils/plot_perf.py processed_results/ dsr1_1k1k
 
 rsync -azP nyx:/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/dsr1_1k1k_fp4_sglang* .
 
-rsync -azP ptyche:/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/runners ./runners
+# sync dynamo down
+rsync -azP ptyche:/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/dynamo .
 
+# sync up 1) launch 
+rsync -azP ./runners/launch_gb200-nv.sh ptyche:/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/runners/launch_gb200-nv.sh
+
+
+# for submit_disagg
+- change time from 4 hours to 1 hour
+- 
 ```
 

@@ -31,7 +31,7 @@ else
     # export IMAGE=$SQUASH_FILE
     
 
-    export MODEL_PATH="nvidia/DeepSeek-R1-0528-FP4-V2"
+    export MODEL_PATH="/lustre/fsw/coreai_prod_infbench/faradawny/cache/huggingface/hub/models--nvidia--DeepSeek-R1-0528-FP4/snapshots/14d2781f5bbc3578387152af672558efc1d093f5/"
     export SERVED_MODEL_NAME="deepseek-r1-fp4"
 fi
 
@@ -59,13 +59,17 @@ if [[ $FRAMEWORK == "dynamo-trtllm" ]]; then
     #   4. Monitors all jobs until completion.
     #   5. Collects and processes the results.
 
-    # Always clone and setup Dynamo
-    echo "Cloning Dynamo repository..."
-    rm -rf "$DYNAMO_PATH"
-    git clone https://github.com/ai-dynamo/dynamo.git "$DYNAMO_PATH"
-    cd "$DYNAMO_PATH"
-    git checkout release/0.5.1-rc0.20251105
-    git submodule update --init --recursive
+    # Clone and setup Dynamo only if it doesn't exist
+    if [ ! -d "$DYNAMO_PATH" ]; then
+        echo "Cloning Dynamo repository..."
+        git clone https://github.com/ai-dynamo/dynamo.git "$DYNAMO_PATH"
+        cd "$DYNAMO_PATH"
+        git checkout release/0.5.1-rc0.20251105
+        git submodule update --init --recursive
+    else
+        echo "Dynamo repository already exists at $DYNAMO_PATH, skipping clone..."
+        cd "$DYNAMO_PATH"
+    fi
 
     # Navigate to performance sweeps directory
     cd "$PERFORMANCE_SWEEPS_PATH"
@@ -124,16 +128,17 @@ if [[ $FRAMEWORK == "dynamo-trtllm" ]]; then
                 ./submit_disagg.sh "mtp=on" "dep" 1 1 8 256 512 "0.8" 1 0 "2252"
             else
                 echo "Running 1k/1k MTP=OFF configurations"
+                echo "=== Running the first one"
 
                 ./submit_disagg.sh "mtp=off" "tep" 1 4 8 128 128 "0.9" 0 0 "1 2 4 8 16 32 64 141"
 
-                ./submit_disagg.sh "mtp=off" "dep" 1 1 32 32 32 "0.7" 0 0 "1075"
+                # ./submit_disagg.sh "mtp=off" "dep" 1 1 32 32 32 "0.7" 0 0 "1075"
 
-                ./submit_disagg.sh "mtp=off" "dep" 1 1 16 64 64 "0.75" 0 0 "1075"
+                # ./submit_disagg.sh "mtp=off" "dep" 1 1 16 64 64 "0.75" 0 0 "1075"
 
-                ./submit_disagg.sh "mtp=off" "dep" 2 1 16 256 256 "0.75" 0 0 "2048 4300"
+                # ./submit_disagg.sh "mtp=off" "dep" 2 1 16 256 256 "0.75" 0 0 "2048 4300"
 
-                ./submit_disagg.sh "mtp=off" "dep" 1 1 8 512 512 "0.8" 0 0 "4300"
+                # ./submit_disagg.sh "mtp=off" "dep" 1 1 8 512 512 "0.8" 0 0 "4300"
             fi
         elif [ "$isl" = "8192" ] && [ "$osl" = "1024" ]; then
             if [ "$mtp_mode" = "on" ]; then
@@ -175,11 +180,15 @@ else # if statement at the top - search for "FRAMEWORK_DIFF_IF_STATEMENT #2"
     DYNAMO_PATH="/mnt/lustre01/users/sa-shared/benchmarks/dynamo"
     SGL_SLURM_JOBS_PATH="$DYNAMO_PATH/components/backends/sglang/slurm_jobs"
 
-    # Always clone and setup Dynamo
-    echo "Cloning Dynamo repository..."
-    rm -rf "$DYNAMO_PATH"
-    git clone --branch update-result-file-name https://github.com/Elnifio/dynamo.git $DYNAMO_PATH
-    cd "$DYNAMO_PATH"
+    # Clone and setup Dynamo only if it doesn't exist
+    if [ ! -d "$DYNAMO_PATH" ]; then
+        echo "Cloning Dynamo repository..."
+        git clone --branch update-result-file-name https://github.com/Elnifio/dynamo.git $DYNAMO_PATH
+        cd "$DYNAMO_PATH"
+    else
+        echo "Dynamo repository already exists at $DYNAMO_PATH, skipping clone..."
+        cd "$DYNAMO_PATH"
+    fi
 
     # Navigate to corresponding directory
     cd "$SGL_SLURM_JOBS_PATH"
