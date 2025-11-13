@@ -5,3 +5,4 @@ bench_serving/
 parallel_results/
 results_1k1k_*/
 results_*/
+dynamo
