@@ -2,11 +2,18 @@
 
 # This script sets up the environment and launches multi-node benchmarks
 
+# Custom
+export FRAMEWORK="dynamo-trtllm"
+export ISL=1024
+export OSL=1024
+export HF_HUB_CACHE_MOUNT="/lustre/fsw/coreai_prod_infbench/common/cache/hub/"
+
 
 # Set up environment variables for SLURM
 export SLURM_PARTITION="batch"
-export SLURM_ACCOUNT="benchmark"
-export SLURM_JOB_NAME="benchmark-dynamo.job"
+export SLURM_ACCOUNT="coreai_prod_infbench"
+export SLURM_JOB_NAME="infmax"
+export SRUN_ARGS="-A coreai_prod_infbench -N1 --partition=$SLURM_PARTITION --exclusive --time=00:30:00"
 
 ### FRAMEWORK_DIFF_IF_STATEMENT #1 - difference in setting up envvars
 if [[ $FRAMEWORK == "dynamo-sglang" ]]; then
@@ -14,15 +21,23 @@ if [[ $FRAMEWORK == "dynamo-sglang" ]]; then
     export MODEL_PATH="/mnt/lustre01/models/deepseek-r1-0528"
     export CONFIG_DIR="/mnt/lustre01/artifacts/sglang-configs/1k1k"
 else
-    SQUASH_FILE="/mnt/lustre01/users/sa-shared/images/$(echo "$IMAGE" | sed 's/[\/:@#]/_/g').sqsh"
-    srun --partition=$SLURM_PARTITION --exclusive --time=180 bash -c "enroot import -o $SQUASH_FILE docker://$IMAGE"
-
+    # FOR TRTLLM
+    export IMAGE="nvcr.io/nvidia/ai-dynamo/tensorrtllm-runtime:0.5.1-rc0.pre3"
+    export SQUASH_FILE="/lustre/fsw/coreai_prod_infbench/faradawny/squash/dynamo-trt.sqsh"
     # Update the IMAGE variable to the squash file
-    export IMAGE=$SQUASH_FILE
+    if [ ! -f "$SQUASH_FILE" ]; then
+        srun $SRUN_ARGS bash -c "enroot import -o $SQUASH_FILE docker://$IMAGE" &
+    fi
+    # export IMAGE=$SQUASH_FILE
+    
 
-    export MODEL_PATH="/mnt/lustre01/models/deepseek-r1-0528-fp4-v2"
+    export MODEL_PATH="nvidia/DeepSeek-R1-0528-FP4-V2"
     export SERVED_MODEL_NAME="deepseek-r1-fp4"
 fi
+
+
+
+
 
 
 export ISL="$ISL"
@@ -32,7 +47,7 @@ export OSL="$OSL"
 if [[ $FRAMEWORK == "dynamo-trtllm" ]]; then
 
     # Set up Dynamo repository path
-    DYNAMO_PATH="/mnt/lustre01/users/sa-shared/benchmarks/dynamo"
+    DYNAMO_PATH="/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/dynamo"
     PERFORMANCE_SWEEPS_PATH="$DYNAMO_PATH/components/backends/trtllm/performance_sweeps"
 
     # Overview:

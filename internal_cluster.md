@@ -105,5 +105,7 @@ python3 utils/plot_perf.py processed_results/ dsr1_1k1k
 
 rsync -azP nyx:/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/dsr1_1k1k_fp4_sglang* .
 
+rsync -azP ptyche:/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/runners ./runners
+
 ```
 
