@@ -111,6 +111,13 @@ rsync -azP ptyche:/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/dynamo
 # sync up 1) launch 
 rsync -azP ./runners/launch_gb200-nv.sh ptyche:/lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/runners/launch_gb200-nv.sh
 
+### Dynamo 
+
+# Run the script
+bash ./runners/launch_gb200-nv.sh
+
+# Monitor log
+tail -f /lustre/fsw/coreai_prod_infbench/faradawny/InferenceMAX/dynamo/components/backends/trtllm/performance_sweeps/dynamo_disagg-bm-1024-1024/ctx1_gen4_tep8_batch128_eplb0_mtp0/bench.log
 
 # for submit_disagg
 - change time from 4 hours to 1 hour
